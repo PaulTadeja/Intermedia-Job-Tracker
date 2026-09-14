@@ -5,12 +5,12 @@ import {
   setDoc, updateDoc, deleteDoc, addDoc, serverTimestamp, arrayUnion, increment
 } from "https://www.gstatic.com/firebasejs/10.13.2/firebase-firestore.js";
 import { firebaseConfig } from "./firebase-config.js";
-
+ 
 (function(){
 "use strict";
-
+ 
 /* ============================== constants ============================== */
-
+ 
 var STATUS_META = {
   "Task Received":      { c:"--neutral", s:"--neutral-soft" },
   "Figma Design Stage":  { c:"--violet",  s:"--violet-soft" },
@@ -31,12 +31,12 @@ var FIELD_LABELS = {
   dateRequested: "Date requested", dateNeeded: "Date needed", status: "Status", assignedTo: "Assigned to",
   dateSubmitted: "Date submitted", timeDesign: "Design hrs", timeDevelopment: "Development hrs", timeAdminContent: "Admin & Content hrs"
 };
-
+ 
 /* ============================== firebase ============================== */
-
+ 
 var fbApp = null, db = null;
 var fatalError = null;
-
+ 
 try {
   if (!firebaseConfig || firebaseConfig.apiKey === "YOUR_API_KEY"){
     fatalError = "firebase-config.js hasn't been filled in yet. Copy firebase-config.sample.js to firebase-config.js and paste in your Firebase project's config values.";
@@ -47,9 +47,9 @@ try {
 } catch (e){
   fatalError = "Could not initialize Firebase: " + (e && e.message ? e.message : e);
 }
-
+ 
 /* ============================== state ============================== */
-
+ 
 // STATE mirrors the live Firestore collections. It's rebuilt (not merged)
 // on every snapshot, so it's always a faithful copy of the server — no
 // separate "publish" step, no whole-document conflicts.
@@ -62,7 +62,7 @@ var STATE = {
 var LOADED = { meta:false, projects:false, tickets:false, auditLog:false };
 var booted = false;
 var connError = null;
-
+ 
 var UI = {                // ephemeral, per-view UI state (never synced)
   projectId: null,
   view: "active",         // 'active' | 'all'
@@ -75,9 +75,9 @@ var UI = {                // ephemeral, per-view UI state (never synced)
   modal: null,            // {type, ...}
   historyOpen: false
 };
-
+ 
 /* ============================== utils ============================== */
-
+ 
 function esc(str){
   if (str === null || str === undefined) return "";
   return String(str).replace(/[&<>"']/g, function(c){
@@ -86,7 +86,7 @@ function esc(str){
 }
 function escAttr(str){ return esc(str); }
 function uid(prefix){ return prefix + "-" + Date.now().toString(36) + Math.random().toString(36).slice(2,8); }
-
+ 
 function fmtHours(n){
   if (n === null || n === undefined || isNaN(n)) return "—";
   var r = Math.round(n * 100) / 100;
@@ -127,7 +127,7 @@ function debounce(fn, ms){
     t = setTimeout(function(){ fn.apply(ctx, args); }, ms);
   };
 }
-
+ 
 function sha256Hex(str){
   var enc = new TextEncoder().encode(str);
   return crypto.subtle.digest("SHA-256", enc).then(function(buf){
@@ -135,23 +135,23 @@ function sha256Hex(str){
     return arr.map(function(b){ return b.toString(16).padStart(2, "0"); }).join("");
   });
 }
-
+ 
 function canManage(){ return UI.mode === "admin"; }
 function canLogTime(){ return UI.mode === "admin" || UI.mode === "tracking"; }
-
+ 
 /* ============================== edit history ============================== */
-
+ 
 function logAudit(summary){
   if (!db) return;
   var mode = UI.mode === "admin" ? "admin" : (UI.mode === "tracking" ? "tracking" : "unknown");
   addDoc(collection(db, "auditLog"), { ts: serverTimestamp(), mode: mode, summary: summary })
     .catch(function(e){ console.error("[tracker] failed to log audit entry", e); });
 }
-
+ 
 function fieldDisplay(v){
   return (v === undefined || v === null || v === "") ? "—" : String(v);
 }
-
+ 
 function diffTicketFields(oldT, newT){
   var changes = [];
   Object.keys(FIELD_LABELS).forEach(function(k){
@@ -161,9 +161,9 @@ function diffTicketFields(oldT, newT){
   });
   return changes;
 }
-
+ 
 /* ============================== backup export ============================== */
-
+ 
 function backupPayload(){
   return {
     exportedAt: new Date().toISOString(),
@@ -174,7 +174,7 @@ function backupPayload(){
     tickets: STATE.tickets
   };
 }
-
+ 
 function copyBackupToClipboard(){
   var json = JSON.stringify(backupPayload(), null, 2);
   if (navigator.clipboard && navigator.clipboard.writeText){
@@ -189,12 +189,12 @@ function copyBackupToClipboard(){
     toast("Clipboard isn’t available here — the text below is selected, press Ctrl/Cmd+C.", "error");
   }
 }
-
+ 
 function selectBackupTextarea(){
   var ta = document.getElementById("backup-json");
   if (ta){ ta.focus(); ta.select(); }
 }
-
+ 
 function securityKey(){ return "edmTracker.security.v2"; }
 function readLocalSecurity(){
   try{
@@ -209,18 +209,18 @@ function writeLocalSecurity(obj){
 function clearLocalSecurity(){
   try{ localStorage.removeItem(securityKey()); }catch(e){}
 }
-
+ 
 /* ============================== pool math ============================== */
-
+ 
 function poolBundle(pool){
   var t = (pool.topups || []).reduce(function(a,x){ return a + (x.hours||0); }, 0);
   return (pool.initialHours || 0) + t;
 }
-
+ 
 function newTicketsFor(projectId){
   return STATE.tickets.filter(function(t){ return t.project === projectId && !t.historical; });
 }
-
+ 
 function activeConsumed(project){
   var extra = newTicketsFor(project.id);
   if (project.pool.mode === "unified"){
@@ -237,7 +237,7 @@ function activeConsumed(project){
   });
   return out;
 }
-
+ 
 function healthTone(remaining, bundle){
   if (!bundle || bundle <= 0) return "neutral";
   var ratio = remaining / bundle;
@@ -245,13 +245,13 @@ function healthTone(remaining, bundle){
   if (ratio < 0.20) return "warn";
   return "good";
 }
-
+ 
 /* ============================== filtering ============================== */
-
+ 
 function projectById(id){
   return STATE.projects.filter(function(p){ return p.id === id; })[0];
 }
-
+ 
 function filteredTickets(){
   var proj = UI.projectId;
   var list = STATE.tickets.filter(function(t){ return t.project === proj; });
@@ -277,9 +277,9 @@ function filteredTickets(){
   });
   return list;
 }
-
+ 
 /* ============================== rendering ============================== */
-
+ 
 function render(){
   var root = document.getElementById("app-root");
   if (fatalError){ root.innerHTML = tplFatal(fatalError); return; }
@@ -290,11 +290,11 @@ function render(){
   root.innerHTML = tplApp();
   wireEvents(root);
 }
-
+ 
 function tplLoading(){
   return '<div class="app-loading">Loading tracker…</div>';
 }
-
+ 
 function tplFatal(msg, heading){
   return (
     '<div class="app-fatal"><div class="app-fatal-box"><h2>' + esc(heading || "Tracker isn’t set up yet") + '</h2>' +
@@ -303,7 +303,7 @@ function tplFatal(msg, heading){
     "</div></div>"
   );
 }
-
+ 
 function tplApp(){
   return (
     tplTopbar() +
@@ -317,7 +317,7 @@ function tplApp(){
     '<div class="toast-wrap" id="toast-wrap" aria-live="polite"></div>'
   );
 }
-
+ 
 function tplBanner(){
   if (connError){
     return '<div class="banner banner-error"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 8v5M12 16h.01"/></svg>' +
@@ -325,13 +325,13 @@ function tplBanner(){
   }
   return "";
 }
-
+ 
 function tplTopbar(){
   var projects = STATE.projects;
   var tabs = projects.map(function(p){
     return '<button class="tab-btn" role="tab" aria-selected="' + (p.id===UI.projectId) + '" data-act="switch-project" data-id="' + p.id + '">' + esc(p.name) + "</button>";
   }).join("");
-
+ 
   var lockBtn;
   if (UI.mode === "admin"){
     lockBtn = '<button class="lockbtn unlocked" data-act="open-lock-menu" title="Admin mode unlocked on this device">' +
@@ -342,12 +342,12 @@ function tplTopbar(){
   } else {
     lockBtn = '<button class="lockbtn" data-act="open-unlock" title="Enter PIN to edit">' + svgLock() + " Edit mode</button>";
   }
-
+ 
   var mark = STATE.meta.logoDataUri
     ? '<img src="' + STATE.meta.logoDataUri + '" alt="Shore360 Agency">'
     : "S";
   var markClass = STATE.meta.logoDataUri ? "brand-mark has-logo" : "brand-mark";
-
+ 
   return (
     '<div class="topbar"><div class="topbar-inner">' +
       '<div class="brand"><div class="' + markClass + '">' + mark + '</div><div class="brand-text"><h1>Intermedia Job Tracker</h1><span>Shore360 Agency</span></div></div>' +
@@ -356,7 +356,7 @@ function tplTopbar(){
     "</div></div>"
   );
 }
-
+ 
 function svgLock(){ return '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="10" width="16" height="10" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/></svg>'; }
 function svgUnlock(){ return '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="10" width="16" height="10" rx="2"/><path d="M8 10V7a4 4 0 0 1 7-3.86"/></svg>'; }
 function svgSearch(){ return '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg>'; }
@@ -366,15 +366,15 @@ function svgTrash(){ return '<svg width="14" height="14" viewBox="0 0 24 24" fil
 function svgClock(){ return '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 3"/></svg>'; }
 function svgChevron(dir){ return '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M' + (dir==="down" ? "6 9l6 6 6-6" : "18 15l-6-6-6 6") + '"/></svg>'; }
 function svgExternal(){ return '<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><path d="M15 3h6v6"/><path d="M10 14 21 3"/></svg>'; }
-
+ 
 function tplToolrow(){
   var opts = ['<option value="all"' + (UI.statusFilter==="all"?" selected":"") + ">All statuses</option>"]
     .concat(STATE.meta.statusList.map(function(s){
       return '<option value="' + escAttr(s) + '"' + (UI.statusFilter===s?" selected":"") + ">" + esc(s) + "</option>";
     })).join("");
-
+ 
   var addBtn = canManage() ? '<button class="btn btn-primary" data-act="open-add-ticket">' + svgPlus() + " New ticket</button>" : "";
-
+ 
   return (
     '<div class="toolrow">' +
       '<div class="search-box">' + svgSearch() + '<input type="text" placeholder="Search ticket, requestor…" value="' + escAttr(UI.search) + '" data-act="search"></div>' +
@@ -388,7 +388,7 @@ function tplToolrow(){
     "</div>"
   );
 }
-
+ 
 function tplLink(label, url, fallbackText){
   if (url){
     return '<a class="linklet" href="' + escAttr(url) + '" target="_blank" rel="noopener noreferrer">' +
@@ -399,7 +399,7 @@ function tplLink(label, url, fallbackText){
   }
   return '<span class="linklet empty">—</span>';
 }
-
+ 
 function tplStatusCell(t){
   var meta = STATUS_META[t.status] || STATUS_META["Task Received"];
   if (!canManage()){
@@ -412,7 +412,7 @@ function tplStatusCell(t){
   }).join("");
   return '<span class="status-wrap"><select class="status-select" style="color:var(' + meta.c + ');background-color:var(' + meta.s + ')" data-act="set-status" data-id="' + t.id + '">' + opts + '</select><svg class="chevron" width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M6 9l6 6 6-6"/></svg></span>';
 }
-
+ 
 function tplAssignedCell(t){
   var list = STATE.meta.assigneeList || [];
   if (!canManage()){
@@ -427,7 +427,7 @@ function tplAssignedCell(t){
     })).join("");
   return '<span class="assignee-wrap"><select class="assignee-select" data-act="set-assignee" data-id="' + t.id + '">' + opts + '</select><svg class="chevron" width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M6 9l6 6 6-6"/></svg></span>';
 }
-
+ 
 function tplTimeUsedCell(t){
   function line(label, v){
     return v == null ? "" : '<span><i>' + label + '</i><b>' + fmtHours(v) + "</b></span>";
@@ -447,7 +447,7 @@ function tplTimeUsedCell(t){
   }
   return '<div class="time-used">' + line("D", t.timeDesign) + line("Dv", t.timeDevelopment) + line("A", t.timeAdminContent) + "</div>";
 }
-
+ 
 function tplRow(t){
   var actions = canManage() ? (
     '<div class="row-actions">' +
@@ -455,10 +455,10 @@ function tplRow(t){
       '<button class="iconbtn" data-act="delete-ticket" data-id="' + t.id + '" title="Delete">' + svgTrash() + "</button>" +
     "</div>"
   ) : "";
-
+ 
   var needed = t.dateNeeded ? '<span class="needed">Needed ' + fmtDate(t.dateNeeded) + "</span>" : "";
   var dateReqCell = t.dateRequested ? (fmtDate(t.dateRequested) + needed) : (t.dateRawNote ? esc(t.dateRawNote) : (needed || "—"));
-
+ 
   return (
     '<tr class="' + (t.historical ? "is-historical" : "") + '" data-row-id="' + t.id + '">' +
       '<td class="cell-ticket">' + tplTicketNameCell(t) + "</td>" +
@@ -474,14 +474,14 @@ function tplRow(t){
     "</tr>"
   );
 }
-
+ 
 function tplTicketNameCell(t){
   var name = t.ticketLink
     ? '<a class="t-name" title="' + escAttr(t.ticket) + '" href="' + escAttr(t.ticketLink) + '" target="_blank" rel="noopener noreferrer">' + esc(t.ticket) + "</a>"
     : '<span class="t-name" title="' + escAttr(t.ticket) + '">' + esc(t.ticket) + "</span>";
   return name;
 }
-
+ 
 function tplTableCard(){
   var all = filteredTickets();
   var isAll = UI.view === "all";
@@ -489,12 +489,12 @@ function tplTableCard(){
   var totalPages = Math.max(1, Math.ceil(all.length / pageSize));
   var page = Math.min(UI.page, totalPages);
   var pageItems = isAll ? all.slice((page-1)*pageSize, page*pageSize) : all;
-
+ 
   var rows = pageItems.map(tplRow).join("");
   var body = rows || (
     '<tr><td colspan="10"><div class="empty-state"><svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M9 5H7a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-2"/><rect x="9" y="3" width="6" height="4" rx="1"/></svg><div>No tickets match here.</div></div></td></tr>'
   );
-
+ 
   var pager = isAll && all.length > pageSize ? (
     '<div class="pager">' +
       '<button class="btn btn-sm" data-act="page-prev" ' + (page<=1?"disabled":"") + ">Prev</button>" +
@@ -502,10 +502,10 @@ function tplTableCard(){
       '<button class="btn btn-sm" data-act="page-next" ' + (page>=totalPages?"disabled":"") + ">Next</button>" +
     "</div>"
   ) : "";
-
+ 
   var heading = isAll ? "All tickets" : "Active tickets";
   var sub = isAll ? "Full history for this project, most recent first." : "Everything still in motion — completed and cancelled tickets are hidden.";
-
+ 
   return (
     '<div class="section-head"><h2>' + heading + '</h2><span class="count">' + all.length + " shown</span></div>" +
     '<p class="section-sub">' + sub + "</p>" +
@@ -526,14 +526,14 @@ function tplTableCard(){
     "</table></div>" + pager + "</div>"
   );
 }
-
+ 
 /* ---------- sticky hours widget ---------- */
-
+ 
 function tplWidget(){
   var project = projectById(UI.projectId);
   if (!project) return "";
   var collapsedClass = UI.widgetCollapsed ? " collapsed" : "";
-
+ 
   var pillTone, pillRemaining;
   var body;
   if (project.pool.mode === "unified"){
@@ -560,15 +560,15 @@ function tplWidget(){
     pillTone = worst;
     body = chunks;
   }
-
+ 
   var pillLabel = project.pool.mode === "unified"
     ? fmtPlainNum(pillRemaining) + "h left"
     : "hours";
-
+ 
   var addBtn = canManage() ? '<button class="btn btn-sm btn-primary" data-act="open-add-hours" data-project="' + project.id + '" style="flex:1">' + svgPlus() + " Add hours</button>" : "";
   var historyBtn = project.legacyPools && project.legacyPools.length
     ? '<button class="hw-history-link" data-act="open-history" data-project="' + project.id + '">View billing history</button>' : "";
-
+ 
   return (
     '<div class="hours-widget' + collapsedClass + '" id="hours-widget" data-act="' + (UI.widgetCollapsed ? "expand-widget" : "") + '">' +
       '<div class="hw-head">' + svgClock() + '<b>' + esc(project.name) + " — hours</b>" +
@@ -581,7 +581,7 @@ function tplWidget(){
     "</div>"
   );
 }
-
+ 
 function tplHwPool(label, consumed, bundle, remaining, tone){
   var pct = bundle > 0 ? Math.max(0, Math.min(100, (consumed / bundle) * 100)) : 0;
   return (
@@ -593,9 +593,9 @@ function tplHwPool(label, consumed, bundle, remaining, tone){
     "</div>"
   );
 }
-
+ 
 /* ---------- modals ---------- */
-
+ 
 function tplModal(){
   var m = UI.modal;
   if (!m) return "";
@@ -611,7 +611,7 @@ function tplModal(){
   else if (m.type === "backup") inner = tplModalBackup(m);
   return '<div class="modal-overlay" data-act="overlay-close">' + inner + "</div>";
 }
-
+ 
 function tplModalUnlock(m){
   return (
     '<div class="modal modal-sm" data-stop="1"><h3>Unlock edit mode</h3><p class="modal-sub">Enter the team PIN to add or change tickets and hours on this device.</p>' +
@@ -622,7 +622,7 @@ function tplModalUnlock(m){
     "</form></div>"
   );
 }
-
+ 
 function tplModalLockMenu(){
   if (UI.mode === "admin"){
     return (
@@ -651,7 +651,7 @@ function tplModalLockMenu(){
     "</div>"
   );
 }
-
+ 
 function tplModalChangePin(m){
   var target = m.target === "tracking" ? "tracking" : "admin";
   var title = target === "admin" ? "Change Admin PIN" : "Change Tracking PIN";
@@ -672,7 +672,7 @@ function tplModalChangePin(m){
     "</form></div>"
   );
 }
-
+ 
 function tplModalConfirmDelete(m){
   var t = STATE.tickets.filter(function(x){ return x.id === m.id; })[0];
   if (!t) return "";
@@ -683,7 +683,7 @@ function tplModalConfirmDelete(m){
     '<button class="btn btn-danger" data-act="confirm-delete-ticket" data-id="' + t.id + '">Delete ticket</button></div></div>'
   );
 }
-
+ 
 function fieldRow(label, name, opts){
   opts = opts || {};
   var type = opts.type || "text";
@@ -693,7 +693,7 @@ function fieldRow(label, name, opts){
     '<input id="f-' + name + '" name="' + name + '" type="' + type + '" value="' + escAttr(val) + '"' + (opts.step ? ' step="' + opts.step + '"' : "") + "></div>"
   );
 }
-
+ 
 function tplModalTicketForm(m){
   var editing = !!m.id;
   var t = editing ? STATE.tickets.filter(function(x){ return x.id === m.id; })[0] : {
@@ -708,7 +708,7 @@ function tplModalTicketForm(m){
     .concat((STATE.meta.assigneeList||[]).map(function(name){
       return '<option value="' + escAttr(name) + '"' + (t.assignedTo===name?" selected":"") + ">" + esc(name) + "</option>";
     })).join("");
-
+ 
   return (
     '<div class="modal" data-stop="1"><h3>' + (editing ? "Edit ticket" : "New ticket") + "</h3>" +
     '<p class="modal-sub">' + esc(projectById(UI.projectId).name) + "</p>" +
@@ -735,7 +735,7 @@ function tplModalTicketForm(m){
     "</form></div>"
   );
 }
-
+ 
 function tplModalAddHours(m){
   var project = projectById(m.project);
   var catField = "";
@@ -759,7 +759,7 @@ function tplModalAddHours(m){
     "</form></div>"
   );
 }
-
+ 
 function tplModalHistory(m){
   var project = projectById(m.project);
   var pools = project.legacyPools || [];
@@ -770,21 +770,21 @@ function tplModalHistory(m){
     var combined = '<div class="legacy-cat"><span>Service hours</span><b>' + fmtPlainNum(totalConsumed) + " / " + fmtPlainNum(totalBundle) + "h used</b></div>";
     return '<div class="legacy-pool"><h4>' + esc(lp.label) + "</h4>" + combined + "</div>";
   }).join("");
-
+ 
   // current pool, for completeness
   var current = "";
   if (project.pool.mode === "unified"){
     var bundle = poolBundle(project.pool);
     current = '<div class="legacy-pool"><h4>Current — ' + esc(project.pool.label) + '</h4><div class="legacy-cat"><span>Started ' + fmtDate(project.pool.initialDate) + "</span><b>" + fmtPlainNum(project.pool.baselineConsumed) + " used as of import</b></div></div>";
   }
-
+ 
   return (
     '<div class="modal" data-stop="1"><h3>Billing history</h3><p class="modal-sub">' + esc(project.name) + " — closed hour bands, read-only.</p>" +
     '<div class="legacy-list">' + current + rows + "</div>" +
     '<div class="modal-actions"><button class="btn btn-primary" data-act="close-modal">Close</button></div></div>'
   );
 }
-
+ 
 function tplModalAuditLog(){
   var log = STATE.auditLog || [];
   var shown = log.slice(0, 200);
@@ -805,7 +805,7 @@ function tplModalAuditLog(){
     '<div class="modal-actions"><button class="btn btn-primary" data-act="close-modal">Close</button></div></div>'
   );
 }
-
+ 
 function tplModalBackup(){
   var count = (STATE.tickets || []).length;
   var json = JSON.stringify(backupPayload(), null, 2);
@@ -819,9 +819,9 @@ function tplModalBackup(){
     '<div class="modal-actions"><button type="button" class="btn btn-ghost" data-act="close-modal">Close</button></div></div>'
   );
 }
-
+ 
 /* ============================== toasts ============================== */
-
+ 
 function toast(msg, kind){
   var wrap = document.getElementById("toast-wrap");
   if (!wrap) return;
@@ -831,9 +831,9 @@ function toast(msg, kind){
   wrap.appendChild(el);
   setTimeout(function(){ el.remove(); }, 3200);
 }
-
+ 
 /* ============================== mutation helpers (Firestore writes) ============================== */
-
+ 
 function ticketPayloadFrom(data){
   return {
     ticket: (data.ticket || "").trim() || "Untitled ticket",
@@ -853,16 +853,16 @@ function ticketPayloadFrom(data){
     timeDevelopment: data.timeDevelopment === "" || data.timeDevelopment === undefined ? null : parseFloat(data.timeDevelopment)
   };
 }
-
+ 
 function writeFailed(e){
   console.error("[tracker] write failed", e);
   toast("Could not save your change — check your connection and try again.", "error");
 }
-
+ 
 /* ============================== events ============================== */
-
+ 
 function closeModal(){ UI.modal = null; render(); }
-
+ 
 function handleScroll(){
   var shouldCollapse = window.scrollY > 80;
   if (shouldCollapse !== UI.widgetCollapsed){
@@ -871,7 +871,7 @@ function handleScroll(){
     if (w) w.classList.toggle("collapsed", shouldCollapse);
   }
 }
-
+ 
 function wireEvents(root){
   root.querySelectorAll("[data-act]").forEach(function(el){
     var act = el.getAttribute("data-act");
@@ -886,7 +886,7 @@ function wireEvents(root){
     }
     el.addEventListener("click", function(ev){ onClick(act, el, ev); });
   });
-
+ 
   var searchEl = root.querySelector('[data-act="search"]');
   if (searchEl){
     searchEl.addEventListener("input", debounce(function(){
@@ -946,9 +946,9 @@ function wireEvents(root){
     m.addEventListener("mousedown", function(ev){ ev.stopPropagation(); });
   });
 }
-
+ 
 var ADMIN_ONLY_ACTS = ["open-add-ticket","open-add-hours","open-edit-ticket","delete-ticket","open-change-pin","open-audit-log","open-backup","copy-backup"];
-
+ 
 function onClick(act, el){
   if (!canManage() && ADMIN_ONLY_ACTS.indexOf(act) !== -1){
     toast("Switch to Admin mode to do this.", "error");
@@ -992,7 +992,7 @@ function onClick(act, el){
     default: break;
   }
 }
-
+ 
 function onFormSubmit(act, form){
   if (act === "submit-unlock"){
     var pin = form.querySelector("#pin-input").value.trim();
@@ -1109,9 +1109,9 @@ function onFormSubmit(act, form){
     return;
   }
 }
-
+ 
 /* ============================== Firestore sync ============================== */
-
+ 
 function afterSnapshot(){
   if (!booted){
     if (!(LOADED.meta && LOADED.projects && LOADED.tickets && LOADED.auditLog)) return;
@@ -1141,7 +1141,7 @@ function afterSnapshot(){
   }
   render();
 }
-
+ 
 function handleSnapshotError(err){
   console.error("[tracker] Firestore error", err);
   if (err && err.code === "permission-denied"){
@@ -1151,7 +1151,7 @@ function handleSnapshotError(err){
   }
   render();
 }
-
+ 
 function startListeners(){
   onSnapshot(doc(db, "meta", "config"), function(snap){
     STATE.meta = snap.exists() ? snap.data() : null;
@@ -1159,7 +1159,7 @@ function startListeners(){
     connError = null;
     afterSnapshot();
   }, handleSnapshotError);
-
+ 
   onSnapshot(collection(db, "projects"), function(snap){
     STATE.projects = snap.docs.map(function(d){ return Object.assign({ id: d.id }, d.data()); })
       .sort(function(a,b){ return (a.order||0) - (b.order||0); });
@@ -1167,14 +1167,14 @@ function startListeners(){
     connError = null;
     afterSnapshot();
   }, handleSnapshotError);
-
+ 
   onSnapshot(collection(db, "tickets"), function(snap){
     STATE.tickets = snap.docs.map(function(d){ return Object.assign({ id: d.id }, d.data()); });
     LOADED.tickets = true;
     connError = null;
     afterSnapshot();
   }, handleSnapshotError);
-
+ 
   onSnapshot(query(collection(db, "auditLog"), orderBy("ts", "desc"), limit(AUDIT_QUERY_LIMIT)), function(snap){
     STATE.auditLog = snap.docs.map(function(d){
       var data = d.data();
@@ -1186,16 +1186,16 @@ function startListeners(){
     afterSnapshot();
   }, handleSnapshotError);
 }
-
+ 
 /* ============================== init ============================== */
-
+ 
 function init(){
   render(); // shows the loading (or fatal-config) screen immediately
   if (fatalError) return;
-
+ 
   window.addEventListener("scroll", handleScroll, { passive:true });
   startListeners();
-
+ 
   // Safety net: if Firestore never calls us back at all (success or error) —
   // e.g. the project ID in firebase-config.js doesn't exist, or something
   // network-level is blocking it — don't sit on "Loading tracker…" forever.
@@ -1206,11 +1206,12 @@ function init(){
     }
   }, 10000);
 }
-
+ 
 if (document.readyState === "loading"){
   document.addEventListener("DOMContentLoaded", init);
 } else {
   init();
 }
-
+ 
 })();
+ 
