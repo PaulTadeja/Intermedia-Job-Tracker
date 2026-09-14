@@ -1,0 +1,13 @@
+{
+  "name": "intermedia-tracker-seed",
+  "private": true,
+  "version": "1.0.0",
+  "description": "One-time / re-runnable seed script that loads data/seed-data.json into Firestore for the Intermedia Job Tracker.",
+  "main": "seed.js",
+  "scripts": {
+    "seed": "node seed.js"
+  },
+  "dependencies": {
+    "firebase-admin": "^12.6.0"
+  }
+}

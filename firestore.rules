@@ -1,0 +1,50 @@
+rules_version = '2';
+
+// Intermedia Job Tracker — Firestore security rules.
+//
+// These rules match the CURRENT security model of the tracker: anyone with
+// the link can read the board (that's the point — it's a shared link for the
+// team and the client), and editing is gated in the app itself by the
+// Admin / Tracking PIN, not by Firestore auth. That means, same as before,
+// the PIN is a convenience gate for well-behaved users, not a hard security
+// boundary — someone who reads the app's source could technically write to
+// these collections directly with the Firebase Web SDK.
+//
+// This is a deliberate, documented trade-off (see README.md → "Security
+// model"), not an oversight. If you later want real enforcement, the
+// straightforward upgrade path is Firebase Authentication (e.g. anonymous
+// auth + a custom claim set by a Cloud Function after PIN verification) —
+// flagged in the README as an optional future enhancement.
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    match /meta/{docId} {
+      allow read: if true;
+      allow write: if true;
+    }
+
+    match /projects/{projectId} {
+      allow read: if true;
+      allow write: if true;
+    }
+
+    match /tickets/{ticketId} {
+      allow read: if true;
+      allow write: if true;
+    }
+
+    match /auditLog/{entryId} {
+      allow read: if true;
+      // Audit entries are append-only from the app's point of view —
+      // it only ever calls addDoc(), never update/delete on these.
+      allow create: if true;
+      allow update, delete: if false;
+    }
+
+    // Deny everything else by default.
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}
