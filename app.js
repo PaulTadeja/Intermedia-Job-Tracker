@@ -602,9 +602,9 @@ function tplWidget(){
     ? fmtPlainNum(pillRemaining) + "h left"
     : "hours";
  
-  var addBtn = canManage() ? '<button class="btn btn-sm btn-primary" data-act="open-add-hours" data-project="' + project.id + '" style="flex:1">' + svgPlus() + " Add hours</button>" : "";
-  var historyBtn = project.legacyPools && project.legacyPools.length
-    ? '<button class="hw-history-link" data-act="open-history" data-project="' + project.id + '">View billing history</button>' : "";
+ var addBtn = canManage() ? '<button class="btn btn-sm btn-primary" data-act="open-add-hours" data-project="' + project.id + '" style="flex:1">' + svgPlus() + " Add hours</button>" : "";
+var historyBtn = (canManage() || (project.legacyPools && project.legacyPools.length))
+  ? '<button class="hw-history-link" data-act="open-history" data-project="' + project.id + '">View Hours History</button>' : "";
  
   return (
     '<div class="hours-widget' + collapsedClass + '" id="hours-widget" data-act="' + (UI.widgetCollapsed ? "expand-widget" : "") + '">' +
