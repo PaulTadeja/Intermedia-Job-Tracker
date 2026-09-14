@@ -331,7 +331,7 @@ function tplTopbar(){
   var tabs = projects.map(function(p){
     return '<button class="tab-btn" role="tab" aria-selected="' + (p.id===UI.projectId) + '" data-act="switch-project" data-id="' + p.id + '">' + esc(p.name) + "</button>";
   }).join("");
- 
+
   var lockBtn;
   if (UI.mode === "admin"){
     lockBtn = '<button class="lockbtn unlocked" data-act="open-lock-menu" title="Admin mode unlocked on this device">' +
@@ -342,9 +342,10 @@ function tplTopbar(){
   } else {
     lockBtn = '<button class="lockbtn" data-act="open-unlock" title="Enter PIN to edit">' + svgLock() + " Edit mode</button>";
   }
+
   return (
     '<div class="topbar"><div class="topbar-inner">' +
-      '<div class="brand"><div class="' + markClass + '">' + mark + '</div><div class="brand-text"><h1>Intermedia Job Tracker</h1></div></div>' +
+      '<div class="brand"><div class="brand-text"><h1>Intermedia Job Tracker</h1></div></div>' +
       '<div class="tabs" role="tablist">' + tabs + "</div>" +
       lockBtn +
     "</div></div>"
