@@ -342,15 +342,9 @@ function tplTopbar(){
   } else {
     lockBtn = '<button class="lockbtn" data-act="open-unlock" title="Enter PIN to edit">' + svgLock() + " Edit mode</button>";
   }
- 
-  var mark = STATE.meta.logoDataUri
-    ? '<img src="' + STATE.meta.logoDataUri + '" alt="Shore360 Agency">'
-    : "S";
-  var markClass = STATE.meta.logoDataUri ? "brand-mark has-logo" : "brand-mark";
- 
   return (
     '<div class="topbar"><div class="topbar-inner">' +
-      '<div class="brand"><div class="' + markClass + '">' + mark + '</div><div class="brand-text"><h1>Intermedia Job Tracker</h1><span>Shore360 Agency</span></div></div>' +
+      '<div class="brand"><div class="' + markClass + '">' + mark + '</div><div class="brand-text"><h1>Intermedia Job Tracker</h1></div></div>' +
       '<div class="tabs" role="tablist">' + tabs + "</div>" +
       lockBtn +
     "</div></div>"
