@@ -245,6 +245,48 @@ function healthTone(remaining, bundle){
   if (ratio < 0.20) return "warn";
   return "good";
 }
+
+  /* ---------- hours-entry (topup) editing helpers ---------- */
+
+function hoursArrayFieldPath(category){
+  return category ? ("pool.categories." + category + ".topups") : "pool.topups";
+}
+
+function hoursArrayFor(project, category){
+  if (!project) return [];
+  return category ? ((project.pool.categories[category] || {}).topups || []) : (project.pool.topups || []);
+}
+
+function findEntryIndex(arr, identity){
+  arr = arr || [];
+  for (var i = 0; i < arr.length; i++){
+    var idAttr = arr[i].id || ("idx:" + i);
+    if (idAttr === identity) return i;
+  }
+  return -1;
+}
+
+function removeHoursEntry(projectId, category, identity){
+  var project = projectById(projectId);
+  if (!project) return;
+  var arr = hoursArrayFor(project, category).slice();
+  var idx = findEntryIndex(arr, identity);
+  if (idx === -1){
+    UI.modal = null; render();
+    toast("That entry has already changed — reload and try again.", "error");
+    return;
+  }
+  var removed = arr[idx];
+  arr.splice(idx, 1);
+  var payload = {};
+  payload[hoursArrayFieldPath(category)] = arr;
+  UI.modal = null; render();
+  updateDoc(doc(db, "projects", projectId), payload).then(function(){
+    var catLbl = category ? (" (" + CAT_LABEL[category] + ")") : "";
+    logAudit("Removed " + fmtPlainNum(removed.hours) + "h" + catLbl + " from " + project.name + ' — "' + (removed.label || "Top up") + '" (' + (fmtDate(removed.date) || "—") + ")");
+    toast("Hours entry removed.", "good");
+  }).catch(writeFailed);
+}
  
 /* ============================== filtering ============================== */
  
@@ -602,6 +644,8 @@ function tplModal(){
   else if (m.type === "confirm-delete") inner = tplModalConfirmDelete(m);
   else if (m.type === "add-hours") inner = tplModalAddHours(m);
   else if (m.type === "history") inner = tplModalHistory(m);
+  else if (m.type === "edit-hours") inner = tplModalEditHours(m);
+  else if (m.type === "confirm-delete-hours") inner = tplModalConfirmDeleteHours(m);
   else if (m.type === "audit-log") inner = tplModalAuditLog(m);
   else if (m.type === "backup") inner = tplModalBackup(m);
   return '<div class="modal-overlay" data-act="overlay-close">' + inner + "</div>";
