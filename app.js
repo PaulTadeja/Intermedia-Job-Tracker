@@ -307,12 +307,12 @@ function tplFatal(msg, heading){
 function tplApp(){
   return (
     tplTopbar() +
-    '<div class="main-wrap">' +
+    '<div class="main-wrap' + (canManage() ? '' : ' no-widget') + '">' +
       tplBanner() +
       tplToolrow() +
       tplTableCard() +
     '</div>' +
-    tplWidget() +
+    (canManage() ? tplWidget() : "") +
     (UI.modal ? tplModal() : "") +
     '<div class="toast-wrap" id="toast-wrap" aria-live="polite"></div>'
   );
