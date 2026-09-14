@@ -1,0 +1,156 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Seed Intermedia Job Tracker</title>
+<style>
+  body{
+    background:#0E1524; color:#EAF0FB; font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+    max-width:640px; margin:60px auto; padding:0 20px; line-height:1.55;
+  }
+  h1{font-size:20px; margin-bottom:4px;}
+  p{color:#B7C1D9; font-size:14px;}
+  button{
+    appearance:none; border:0; background:#E97132; color:#121E34; font-weight:600;
+    font-size:14px; padding:11px 20px; border-radius:9px; cursor:pointer; margin:16px 0;
+  }
+  button:disabled{opacity:.5; cursor:not-allowed;}
+  button.danger{background:#D1495B; color:#fff;}
+  #log{
+    background:#161E30; border:1px solid #2A3552; border-radius:10px; padding:14px 16px;
+    font-family:"IBM Plex Mono",ui-monospace,monospace; font-size:12.5px; white-space:pre-wrap;
+    max-height:360px; overflow:auto; margin-top:16px;
+  }
+  .warn{background:#332C12; border:1px solid #C9AE4A; color:#EAF0FB; border-radius:10px; padding:12px 16px; font-size:13px; margin:16px 0;}
+  code{background:#1D2740; padding:1px 5px; border-radius:5px;}
+</style>
+</head>
+<body>
+<h1>Seed the Intermedia Job Tracker</h1>
+<p>This is a one-time (or occasional) setup page — it loads <code>data/seed-data.json</code>
+(your 598 tickets, both projects, and the carried-over edit history) into your Firestore
+database, using the same <code>firebase-config.js</code> the live tracker uses.</p>
+<p>Once you've run this successfully, you can delete this file from your repo — the tracker
+itself doesn't use it.</p>
+<div id="status">Checking your database…</div>
+<div id="controls"></div>
+<div id="log"></div>
+
+<script type="module">
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.13.2/firebase-app.js";
+import {
+  getFirestore, doc, getDoc, setDoc, collection, writeBatch, addDoc, serverTimestamp, Timestamp
+} from "https://www.gstatic.com/firebasejs/10.13.2/firebase-firestore.js";
+import { firebaseConfig } from "./firebase-config.js";
+
+var statusEl = document.getElementById("status");
+var controlsEl = document.getElementById("controls");
+var logEl = document.getElementById("log");
+
+function log(msg){ logEl.textContent += msg + "\n"; logEl.scrollTop = logEl.scrollHeight; }
+
+var app, db, seed;
+
+async function init(){
+  try{
+    app = initializeApp(firebaseConfig);
+    db = getFirestore(app);
+  } catch(e){
+    statusEl.innerHTML = '<div class="warn">Could not initialize Firebase: ' + e.message + ' — check firebase-config.js.</div>';
+    return;
+  }
+
+  try{
+    var res = await fetch("./data/seed-data.json");
+    if (!res.ok) throw new Error("HTTP " + res.status);
+    seed = await res.json();
+  } catch(e){
+    statusEl.innerHTML = '<div class="warn">Could not load data/seed-data.json (' + e.message + '). Make sure this page and the data folder were both uploaded to your repo.</div>';
+    return;
+  }
+
+  var metaSnap;
+  try{
+    metaSnap = await getDoc(doc(db, "meta", "config"));
+  } catch(e){
+    statusEl.innerHTML = '<div class="warn">Could not reach Firestore: ' + e.message + ' — check that firestore.rules has been published (Firebase console → Firestore Database → Rules).</div>';
+    return;
+  }
+
+  if (metaSnap.exists()){
+    statusEl.innerHTML = '<div class="warn"><b>Data already exists</b> in this Firestore project (meta/config is already set). ' +
+      'Running this again will overwrite it back to the original imported dataset — any edits made on the live tracker since then would be lost. ' +
+      'Only continue if that\'s really what you want.</div>';
+    var btn = document.createElement("button");
+    btn.className = "danger";
+    btn.textContent = "I understand — overwrite with the original data anyway";
+    btn.onclick = function(){ btn.disabled = true; runSeed(); };
+    controlsEl.appendChild(btn);
+  } else {
+    statusEl.textContent = "Ready to load " + seed.tickets.length + " tickets, " + seed.projects.length + " projects, and " + seed.auditLog.length + " history entries into Firestore.";
+    var btn2 = document.createElement("button");
+    btn2.textContent = "Seed my data now";
+    btn2.onclick = function(){ btn2.disabled = true; runSeed(); };
+    controlsEl.appendChild(btn2);
+  }
+}
+
+function chunk(arr, size){
+  var out = [];
+  for (var i = 0; i < arr.length; i += size) out.push(arr.slice(i, i + size));
+  return out;
+}
+
+async function runSeed(){
+  log("Starting…");
+  try{
+    log("1/4 Writing meta/config…");
+    await setDoc(doc(db, "meta", "config"), seed.meta);
+    log("    done.");
+
+    log("2/4 Writing " + seed.projects.length + " project(s)…");
+    for (var p of seed.projects){
+      var pdata = Object.assign({}, p); delete pdata.id;
+      await setDoc(doc(db, "projects", p.id), pdata);
+    }
+    log("    done.");
+
+    log("3/4 Writing " + seed.tickets.length + " ticket(s)…");
+    var chunks = chunk(seed.tickets, 450);
+    var written = 0;
+    for (var c of chunks){
+      var batch = writeBatch(db);
+      c.forEach(function(t){
+        var tdata = Object.assign({}, t); delete tdata.id;
+        batch.set(doc(db, "tickets", t.id), tdata);
+      });
+      await batch.commit();
+      written += c.length;
+      log("    ..." + written + " / " + seed.tickets.length);
+    }
+
+    log("4/4 Writing " + seed.auditLog.length + " audit-log entr(y/ies)…");
+    for (var entry of seed.auditLog){
+      await addDoc(collection(db, "auditLog"), {
+        mode: entry.mode || "unknown",
+        summary: entry.summary,
+        ts: entry.ts ? Timestamp.fromDate(new Date(entry.ts)) : serverTimestamp()
+      });
+    }
+    log("    done.");
+
+    log("\nAll done! Admin PIN: 5360   Tracking PIN: 2468");
+    log("Reload your live tracker link — it should show your data now.");
+    log("You can delete this seed.html file from your repo any time after this.");
+    statusEl.textContent = "Seeding complete.";
+  } catch(e){
+    log("\nFAILED: " + e.message);
+    console.error(e);
+  }
+}
+
+init();
+</script>
+</body>
+</html>
