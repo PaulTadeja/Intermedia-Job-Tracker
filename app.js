@@ -799,28 +799,71 @@ function tplModalAddHours(m){
   );
 }
  
-function tplModalHistory(m){
+function tplModalEditHours(m){
   var project = projectById(m.project);
-  var pools = project.legacyPools || [];
-  var rows = pools.map(function(lp){
-    var catKeys = Object.keys(lp.categories);
-    var totalConsumed = catKeys.reduce(function(a,k){ return a + (lp.categories[k].baselineConsumed || 0); }, 0);
-    var totalBundle = catKeys.reduce(function(a,k){ return a + poolBundle(lp.categories[k]); }, 0);
-    var combined = '<div class="legacy-cat"><span>Service hours</span><b>' + fmtPlainNum(totalConsumed) + " / " + fmtPlainNum(totalBundle) + "h used</b></div>";
-    return '<div class="legacy-pool"><h4>' + esc(lp.label) + "</h4>" + combined + "</div>";
-  }).join("");
- 
-  // current pool, for completeness
-  var current = "";
-  if (project.pool.mode === "unified"){
-    var bundle = poolBundle(project.pool);
-    current = '<div class="legacy-pool"><h4>Current — ' + esc(project.pool.label) + '</h4><div class="legacy-cat"><span>Started ' + fmtDate(project.pool.initialDate) + "</span><b>" + fmtPlainNum(project.pool.baselineConsumed) + " used as of import</b></div></div>";
-  }
- 
+  var arr = hoursArrayFor(project, m.category);
+  var idx = findEntryIndex(arr, m.entry);
+  var entry = idx !== -1 ? arr[idx] : { hours:"", date:todayISO(), label:"" };
+  var catNote = m.category ? (" — " + esc(CAT_LABEL[m.category])) : "";
   return (
-    '<div class="modal" data-stop="1"><h3>Billing history</h3><p class="modal-sub">' + esc(project.name) + " — closed hour bands, read-only.</p>" +
-    '<div class="legacy-list">' + current + rows + "</div>" +
-    '<div class="modal-actions"><button class="btn btn-primary" data-act="close-modal">Close</button></div></div>'
+    '<div class="modal modal-sm" data-stop="1"><h3>Edit hours entry</h3><p class="modal-sub">' + esc(project.name) + catNote + "</p>" +
+    (m.error ? '<div class="modal-err">' + esc(m.error) + "</div>" : "") +
+    '<form data-act="submit-edit-hours" data-project="' + project.id + '" data-entry="' + escAttr(m.entry) + '"' + (m.category ? ' data-category="' + m.category + '"' : '') + '>' +
+      '<div class="field-row">' +
+        '<div class="field"><label for="fe-hours">Hours</label><input id="fe-hours" name="hours" type="number" step="0.25" min="0.25" value="' + escAttr(entry.hours) + '" required></div>' +
+        '<div class="field"><label for="fe-date">Date</label><input id="fe-date" name="date" type="date" value="' + escAttr(entry.date || todayISO()) + '"></div>' +
+      "</div>" +
+      '<div class="field"><label for="fe-label">Note</label><input id="fe-label" name="label" type="text" value="' + escAttr(entry.label || "") + '" placeholder="e.g. Client purchased extra hours"></div>' +
+      '<div class="modal-actions"><button type="button" class="btn" data-act="close-modal">Cancel</button><button type="submit" class="btn btn-primary">Save changes</button></div>' +
+    "</form></div>"
+  );
+}
+
+function tplModalConfirmDeleteHours(m){
+  var project = projectById(m.project);
+  var arr = hoursArrayFor(project, m.category);
+  var idx = findEntryIndex(arr, m.entry);
+  var entry = idx !== -1 ? arr[idx] : null;
+  var desc = entry ? (fmtHours(entry.hours) + ' — "' + esc(entry.label || "Top up") + '" (' + (fmtDate(entry.date) || "—") + ")") : "This entry";
+  return (
+    '<div class="modal modal-sm" data-stop="1"><h3>Remove this hours entry?</h3>' +
+    '<p class="modal-sub">' + desc + " will be removed from " + esc(project.name) + "’s hours. This can’t be undone.</p>" +
+    '<div class="modal-actions"><button class="btn" data-act="close-modal">Cancel</button>' +
+    '<button class="btn btn-danger" data-act="confirm-delete-hours-entry" data-project="' + project.id + '" data-entry="' + escAttr(m.entry) + '"' + (m.category ? ' data-cat="' + m.category + '"' : '') + '>Remove entry</button></div></div>'
+  );
+}
+
+  function tplModalEditHours(m){
+  var project = projectById(m.project);
+  var arr = hoursArrayFor(project, m.category);
+  var idx = findEntryIndex(arr, m.entry);
+  var entry = idx !== -1 ? arr[idx] : { hours:"", date:todayISO(), label:"" };
+  var catNote = m.category ? (" — " + esc(CAT_LABEL[m.category])) : "";
+  return (
+    '<div class="modal modal-sm" data-stop="1"><h3>Edit hours entry</h3><p class="modal-sub">' + esc(project.name) + catNote + "</p>" +
+    (m.error ? '<div class="modal-err">' + esc(m.error) + "</div>" : "") +
+    '<form data-act="submit-edit-hours" data-project="' + project.id + '" data-entry="' + escAttr(m.entry) + '"' + (m.category ? ' data-category="' + m.category + '"' : '') + '>' +
+      '<div class="field-row">' +
+        '<div class="field"><label for="fe-hours">Hours</label><input id="fe-hours" name="hours" type="number" step="0.25" min="0.25" value="' + escAttr(entry.hours) + '" required></div>' +
+        '<div class="field"><label for="fe-date">Date</label><input id="fe-date" name="date" type="date" value="' + escAttr(entry.date || todayISO()) + '"></div>' +
+      "</div>" +
+      '<div class="field"><label for="fe-label">Note</label><input id="fe-label" name="label" type="text" value="' + escAttr(entry.label || "") + '" placeholder="e.g. Client purchased extra hours"></div>' +
+      '<div class="modal-actions"><button type="button" class="btn" data-act="close-modal">Cancel</button><button type="submit" class="btn btn-primary">Save changes</button></div>' +
+    "</form></div>"
+  );
+}
+
+function tplModalConfirmDeleteHours(m){
+  var project = projectById(m.project);
+  var arr = hoursArrayFor(project, m.category);
+  var idx = findEntryIndex(arr, m.entry);
+  var entry = idx !== -1 ? arr[idx] : null;
+  var desc = entry ? (fmtHours(entry.hours) + ' — "' + esc(entry.label || "Top up") + '" (' + (fmtDate(entry.date) || "—") + ")") : "This entry";
+  return (
+    '<div class="modal modal-sm" data-stop="1"><h3>Remove this hours entry?</h3>' +
+    '<p class="modal-sub">' + desc + " will be removed from " + esc(project.name) + "’s hours. This can’t be undone.</p>" +
+    '<div class="modal-actions"><button class="btn" data-act="close-modal">Cancel</button>' +
+    '<button class="btn btn-danger" data-act="confirm-delete-hours-entry" data-project="' + project.id + '" data-entry="' + escAttr(m.entry) + '"' + (m.category ? ' data-cat="' + m.category + '"' : '') + '>Remove entry</button></div></div>'
   );
 }
  
@@ -986,7 +1029,7 @@ function wireEvents(root){
   });
 }
  
-var ADMIN_ONLY_ACTS = ["open-add-ticket","open-add-hours","open-edit-ticket","delete-ticket","open-change-pin","open-audit-log","open-backup","copy-backup"];
+var ADMIN_ONLY_ACTS = ["open-add-ticket","open-add-hours","open-edit-ticket","delete-ticket","open-change-pin","open-audit-log","open-backup","copy-backup","open-edit-hours","delete-hours-entry"];
  
 function onClick(act, el){
   if (!canManage() && ADMIN_ONLY_ACTS.indexOf(act) !== -1){
@@ -1025,6 +1068,15 @@ function onClick(act, el){
       break;
     case "open-add-hours": UI.modal = { type:"add-hours", project: el.getAttribute("data-project") }; render(); break;
     case "open-history": UI.modal = { type:"history", project: el.getAttribute("data-project") }; render(); break;
+    case "open-edit-hours":
+  UI.modal = { type:"edit-hours", project: el.getAttribute("data-project"), entry: el.getAttribute("data-entry"), category: el.getAttribute("data-cat") || null };
+  render(); break;
+case "delete-hours-entry":
+  UI.modal = { type:"confirm-delete-hours", project: el.getAttribute("data-project"), entry: el.getAttribute("data-entry"), category: el.getAttribute("data-cat") || null };
+  render(); break;
+case "confirm-delete-hours-entry":
+  removeHoursEntry(el.getAttribute("data-project"), el.getAttribute("data-cat") || null, el.getAttribute("data-entry"));
+  break;
     case "open-audit-log": UI.modal = { type:"audit-log" }; render(); break;
     case "open-backup": UI.modal = { type:"backup" }; render(); break;
     case "copy-backup": copyBackupToClipboard(); break;
@@ -1130,7 +1182,7 @@ function onFormSubmit(act, form){
     }
     var projectId = form.getAttribute("data-project");
     var project = projectById(projectId);
-    var entry = { date: fd2.get("date") || todayISO(), hours: hours, label: (fd2.get("label")||"").trim() || "Top up" };
+   var entry = { id: uid("hx"), date: fd2.get("date") || todayISO(), hours: hours, label: (fd2.get("label")||"").trim() || "Top up" };
     var catLabel = "";
     var updatePayload = {};
     if (project.pool.mode === "unified"){
@@ -1146,6 +1198,42 @@ function onFormSubmit(act, form){
     }).catch(writeFailed);
     UI.modal = null; render();
     return;
+  }
+  if (act === "submit-edit-hours"){
+  var fd3 = new FormData(form);
+  var newHours = parseFloat(fd3.get("hours"));
+  if (!newHours || newHours <= 0){
+    UI.modal = Object.assign({}, UI.modal, { error:"Enter a positive number of hours." }); render(); return;
+  }
+  var eProjectId = form.getAttribute("data-project");
+  var eCategory = form.getAttribute("data-category") || null;
+  var eIdentity = form.getAttribute("data-entry");
+  var eProject = projectById(eProjectId);
+  var eArr = hoursArrayFor(eProject, eCategory).slice();
+  var eIdx = findEntryIndex(eArr, eIdentity);
+  if (eIdx === -1){
+    UI.modal = null; render();
+    toast("That entry has already changed — reload and try again.", "error");
+    return;
+  }
+  var oldEntry = eArr[eIdx];
+  var newEntry = Object.assign({}, oldEntry, {
+    hours: newHours,
+    date: fd3.get("date") || todayISO(),
+    label: (fd3.get("label")||"").trim() || "Top up"
+  });
+  eArr[eIdx] = newEntry;
+  var ePayload = {};
+  ePayload[hoursArrayFieldPath(eCategory)] = eArr;
+  UI.modal = null; render();
+  updateDoc(doc(db, "projects", eProjectId), ePayload).then(function(){
+    var catLbl = eCategory ? (" (" + CAT_LABEL[eCategory] + ")") : "";
+    logAudit("Edited hours entry" + catLbl + " for " + eProject.name + ": " +
+      fmtPlainNum(oldEntry.hours) + 'h "' + (oldEntry.label||"Top up") + '" (' + (fmtDate(oldEntry.date)||"—") + ") → " +
+      fmtPlainNum(newEntry.hours) + 'h "' + newEntry.label + '" (' + (fmtDate(newEntry.date)||"—") + ")");
+    toast("Hours entry updated.", "good");
+  }).catch(writeFailed);
+  return;
   }
 }
  
