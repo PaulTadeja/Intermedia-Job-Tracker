@@ -29,7 +29,8 @@ var FIELD_LABELS = {
   ticket: "Name", ticketLink: "Ticket link", hubspotLabel: "HubSpot label", hubspotLink: "HubSpot link",
   assetLabel: "Asset label", assetLink: "Asset link", requestor: "Requestor",
   dateRequested: "Date requested", dateNeeded: "Date needed", status: "Status", assignedTo: "Assigned to",
-  dateSubmitted: "Date submitted", timeDesign: "Design hrs", timeDevelopment: "Development hrs", timeAdminContent: "Admin & Content hrs"
+  dateSubmitted: "Date submitted", timeDesign: "Design hrs", timeDevelopment: "Development hrs", timeAdminContent: "Admin & Content hrs",
+  devNotes: "Dev notes", clickupLink: "ClickUp link"
 };
  
 /* ============================== firebase ============================== */
@@ -397,6 +398,7 @@ function svgSearch(){ return '<svg width="14" height="14" viewBox="0 0 24 24" fi
 function svgPlus(){ return '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M12 5v14M5 12h14"/></svg>'; }
 function svgEdit(){ return '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>'; }
 function svgTrash(){ return '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/></svg>'; }
+function svgNote(){ return '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5"/><path d="M9 13h6M9 17h4"/></svg>'; }
 function svgClock(){ return '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 3"/></svg>'; }
 function svgChevron(dir){ return '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M' + (dir==="down" ? "6 9l6 6 6-6" : "18 15l-6-6-6 6") + '"/></svg>'; }
 function svgExternal(){ return '<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><path d="M15 3h6v6"/><path d="M10 14 21 3"/></svg>'; }
@@ -483,12 +485,15 @@ function tplTimeUsedCell(t){
 }
  
 function tplRow(t){
-  var actions = canManage() ? (
-    '<div class="row-actions">' +
+  var hasNotes = canLogTime() && (t.devNotes || t.clickupLink);
+  var notesBtn = hasNotes
+    ? '<button class="iconbtn" data-act="open-ticket-notes" data-id="' + t.id + '" title="Dev notes">' + svgNote() + "</button>"
+    : "";
+  var manageActions = canManage() ? (
       '<button class="iconbtn" data-act="open-edit-ticket" data-id="' + t.id + '" title="Edit">' + svgEdit() + "</button>" +
-      '<button class="iconbtn" data-act="delete-ticket" data-id="' + t.id + '" title="Delete">' + svgTrash() + "</button>" +
-    "</div>"
-  ) : "";
+      '<button class="iconbtn" data-act="delete-ticket" data-id="' + t.id + '" title="Delete">' + svgTrash() + "</button>"
+    ) : "";
+  var actions = (notesBtn || manageActions) ? ('<div class="row-actions">' + notesBtn + manageActions + "</div>") : "";
  
   var needed = t.dateNeeded ? '<span class="needed">Needed ' + fmtDate(t.dateNeeded) + "</span>" : "";
   var dateReqCell = t.dateRequested ? (fmtDate(t.dateRequested) + needed) : (t.dateRawNote ? esc(t.dateRawNote) : (needed || "—"));
@@ -638,6 +643,7 @@ function tplModal(){
   else if (m.type === "lock-menu") inner = tplModalLockMenu(m);
   else if (m.type === "change-pin") inner = tplModalChangePin(m);
   else if (m.type === "ticket-form") inner = tplModalTicketForm(m);
+  else if (m.type === "ticket-notes") inner = tplModalTicketNotes(m);
   else if (m.type === "confirm-delete") inner = tplModalConfirmDelete(m);
   else if (m.type === "add-hours") inner = tplModalAddHours(m);
   else if (m.type === "history") inner = tplModalHistory(m);
@@ -730,12 +736,21 @@ function fieldRow(label, name, opts){
   );
 }
  
+function fieldTextarea(label, name, opts){
+  opts = opts || {};
+  var val = opts.value !== undefined && opts.value !== null ? opts.value : "";
+  return (
+    '<div class="field"><label for="f-' + name + '">' + esc(label) + "</label>" +
+    '<textarea id="f-' + name + '" name="' + name + '" rows="' + (opts.rows || 4) + '">' + esc(val) + "</textarea></div>"
+  );
+}
+ 
 function tplModalTicketForm(m){
   var editing = !!m.id;
   var t = editing ? STATE.tickets.filter(function(x){ return x.id === m.id; })[0] : {
     ticket:"", ticketLink:"", hubspotLabel:"", hubspotLink:"", assetLabel:"", assetLink:"",
     requestor:"", dateRequested: todayISO(), dateNeeded:"", status:"Task Received", assignedTo:"", dateSubmitted:"",
-    timeDesign:"", timeDevelopment:"", timeAdminContent:""
+    timeDesign:"", timeDevelopment:"", timeAdminContent:"", devNotes:"", clickupLink:""
   };
   var statusOpts = STATE.meta.statusList.map(function(s){
     return '<option value="' + escAttr(s) + '"' + (t.status===s?" selected":"") + ">" + esc(s) + "</option>";
@@ -766,9 +781,27 @@ function tplModalTicketForm(m){
         fieldRow("Development (hrs)", "timeDevelopment", { type:"number", step:"0.25", value: t.timeDevelopment }) +
         fieldRow("Admin & Content (hrs)", "timeAdminContent", { type:"number", step:"0.25", value: t.timeAdminContent }) +
       "</div>" +
+      fieldRow("ClickUp link (optional)", "clickupLink", { type:"url", value: t.clickupLink }) +
+      fieldTextarea("Dev notes (optional — visible to Admin & Tracking mode only)", "devNotes", { value: t.devNotes, rows: 5 }) +
       (editing && t.historical ? '<p class="field-hint">This is an imported record — its hours are already counted in the starting balance, so editing them here won’t change the hours widget.</p>' : "") +
       '<div class="modal-actions"><button type="button" class="btn" data-act="close-modal">Cancel</button><button type="submit" class="btn btn-primary">' + (editing?"Save changes":"Create ticket") + "</button></div>" +
     "</form></div>"
+  );
+}
+ 
+function tplModalTicketNotes(m){
+  var t = STATE.tickets.filter(function(x){ return x.id === m.id; })[0];
+  if (!t) return "";
+  var notesHtml = t.devNotes
+    ? '<div class="dev-notes-body">' + esc(t.devNotes).replace(/\n/g, "<br>") + "</div>"
+    : '<p class="field-hint">No dev notes on this ticket.</p>';
+  var linkHtml = t.clickupLink
+    ? '<p><a class="linklet" href="' + escAttr(t.clickupLink) + '" target="_blank" rel="noopener noreferrer">Open in ClickUp' + svgExternal() + "</a></p>"
+    : "";
+  return (
+    '<div class="modal" data-stop="1"><h3>Dev notes</h3><p class="modal-sub">' + esc(t.ticket) + '</p>' +
+    linkHtml + notesHtml +
+    '<div class="modal-actions"><button class="btn btn-primary" data-act="close-modal">Close</button></div></div>'
   );
 }
  
@@ -953,7 +986,9 @@ function ticketPayloadFrom(data){
     dateSubmitted: data.dateSubmitted || null,
     timeDesign: data.timeDesign === "" || data.timeDesign === undefined ? null : parseFloat(data.timeDesign),
     timeAdminContent: data.timeAdminContent === "" || data.timeAdminContent === undefined ? null : parseFloat(data.timeAdminContent),
-    timeDevelopment: data.timeDevelopment === "" || data.timeDevelopment === undefined ? null : parseFloat(data.timeDevelopment)
+    timeDevelopment: data.timeDevelopment === "" || data.timeDevelopment === undefined ? null : parseFloat(data.timeDevelopment),
+    devNotes: (data.devNotes || "").trim() || null,
+    clickupLink: (data.clickupLink || "").trim() || null
   };
 }
  
@@ -1078,6 +1113,7 @@ function onClick(act, el){
     case "open-add-ticket": UI.modal = { type:"ticket-form" }; render(); break;
     case "open-edit-ticket": UI.modal = { type:"ticket-form", id: el.getAttribute("data-id") }; render(); break;
     case "delete-ticket": UI.modal = { type:"confirm-delete", id: el.getAttribute("data-id") }; render(); break;
+    case "open-ticket-notes": UI.modal = { type:"ticket-notes", id: el.getAttribute("data-id") }; render(); break;
     case "confirm-delete-ticket":
       var delId = el.getAttribute("data-id");
       var delT = STATE.tickets.filter(function(x){ return x.id === delId; })[0];
