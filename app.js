@@ -392,9 +392,12 @@ function tplTopbar(){
     lockBtn = '<button class="lockbtn" data-act="open-unlock" title="Enter PIN to edit">' + svgLock() + " Edit mode</button>";
   }
 
+  var adOpsBtn = '<a class="ext-link-btn" href="https://docs.google.com/spreadsheets/d/1LWaTgAyptUoQhxEPcKomhb2cPNaLDF809yNh0BqkqgA/edit?gid=1107062413#gid=1107062413" target="_blank" rel="noopener noreferrer">' + svgExternal() + " Ad Ops Brand Grouping</a>";
+
   return (
     '<div class="topbar"><div class="topbar-inner">' +
       '<div class="brand"><div class="brand-text"><h1>Intermedia Job Tracker</h1></div></div>' +
+      adOpsBtn +
       '<div class="tabs" role="tablist">' + tabs + "</div>" +
       lockBtn +
     "</div></div>"
